@@ -1,5 +1,6 @@
 #!/bin/bash
 docker run --gpus all -it --rm \
+  --ipc host\
   --user "$(id -u):$(id -g)" \
   $(id -G | sed 's/\([0-9]\+\)/--group-add \1/g') \
   -e HOME=/workspace \

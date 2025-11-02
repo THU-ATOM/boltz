@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
+FROM nvidia/cuda:12.6.1-cudnn-devel-ubuntu22.04
 
 # Set default RUN shell to /bin/bash
 SHELL ["/bin/bash", "-cu"]
@@ -81,15 +81,8 @@ RUN /usr/local/bin/conda tos accept --override-channels --channel https://repo.a
     && /usr/local/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r \
     && /usr/local/bin/conda tos accept --override-channels --channel https://conda.anaconda.org/pytorch \
     && /usr/local/bin/conda tos accept --override-channels --channel https://conda.anaconda.org/conda-forge
-RUN conda install -y \
-    pytorch::pytorch==2.3.1 \
-    pytorch-cuda=12.1 \
-    mkl==2023.0 \
-    -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch \
-    -c https://mirrors.sustech.edu.cn/anaconda-extra/cloud/nvidia \
-    -c conda-forge \
-    && conda clean -y --all
-
+RUN pip install --no-cache-dir \
+    torch==2.7.1 --index-url https://download.pytorch.org/whl/cu126
 
 COPY . /workspace
 RUN pip install --no-cache-dir /workspace[cuda]
