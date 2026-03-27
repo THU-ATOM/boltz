@@ -278,6 +278,7 @@ class Boltz1(LightningModule):
         diffusion_samples: int = 1,
         max_parallel_samples: Optional[int] = None,
         run_confidence_sequentially: bool = False,
+        algorithm: Optional[dict[str, Any]] = None,
     ) -> dict[str, Tensor]:
         dict_out = {}
 
@@ -373,6 +374,7 @@ class Boltz1(LightningModule):
                     max_parallel_samples=max_parallel_samples,
                     train_accumulate_token_repr=self.training,
                     steering_args=self.steering_args,
+                    algorithm=algorithm,
                 )
             )
 
@@ -1159,6 +1161,7 @@ class Boltz1(LightningModule):
                 diffusion_samples=self.predict_args["diffusion_samples"],
                 max_parallel_samples=self.predict_args["diffusion_samples"],
                 run_confidence_sequentially=True,
+                algorithm=self.predict_args.get("algorithm"),
             )
             pred_dict = {"exception": False}
             pred_dict["masks"] = batch["atom_pad_mask"]

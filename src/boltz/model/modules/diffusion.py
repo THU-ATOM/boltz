@@ -454,6 +454,7 @@ class AtomDiffusion(Module):
         max_parallel_samples=None,
         train_accumulate_token_repr=False,
         steering_args=None,
+        algorithm=None,
         **network_condition_kwargs,
     ):
         if steering_args is not None and (
@@ -488,6 +489,14 @@ class AtomDiffusion(Module):
         gammas = torch.where(sigmas > self.gamma_min, self.gamma_0, 0.0)
         sigmas_and_gammas = list(zip(sigmas[:-1], sigmas[1:], gammas[1:]))
 
+        algorithm = default(
+            algorithm,
+            {"name": "mid_point_ode", "temp_index": 0.0, "temperature_type": "exponential"},
+        )
+        alg_name = algorithm.get("name", "mid_point_ode")
+        temp_index = float(algorithm.get("temp_index", 0.0))
+        temperature_type = algorithm.get("temperature_type", "exponential")
+
         # atom position is noise at the beginning
         init_sigma = sigmas[0]
         atom_coords = init_sigma * torch.randn(shape, device=self.device)
@@ -521,13 +530,24 @@ class AtomDiffusion(Module):
                     "bmd,bds->bms", scaled_guidance_update, random_R
                 )
 
-            sigma_tm, sigma_t, gamma = sigma_tm.item(), sigma_t.item(), gamma.item()
+            sigma_tm = sigma_tm.item()
+            sigma_t = sigma_t.item()
+            gamma_pc = gamma.item()
 
-            t_hat = sigma_tm * (1 + gamma)
             steering_t = 1.0 - (step_idx / num_sampling_steps)
-            noise_var = self.noise_scale**2 * (t_hat**2 - sigma_tm**2)
-            eps = sqrt(noise_var) * torch.randn(shape, device=self.device)
-            atom_coords_noisy = atom_coords + eps
+
+            if alg_name == "mid_point_ode":
+                t_hat = sigma_tm * (1 + gamma_pc)
+                noise_var = self.noise_scale**2 * (t_hat**2 - sigma_tm**2)
+                eps = sqrt(noise_var) * torch.randn(shape, device=self.device)
+                atom_coords_noisy = atom_coords + eps
+            elif "stomax" in alg_name or "markov" in alg_name:
+                t_hat = sigma_tm
+                noise_var = 0.0
+                eps = torch.zeros(shape, device=self.device, dtype=atom_coords.dtype)
+                atom_coords_noisy = atom_coords
+            else:
+                raise ValueError(f"Unknown sampling algorithm: {alg_name}")
 
             with torch.no_grad():
                 atom_coords_denoised = torch.zeros_like(atom_coords_noisy)
@@ -697,11 +717,57 @@ class AtomDiffusion(Module):
 
                 atom_coords_noisy = atom_coords_noisy.to(atom_coords_denoised)
 
-            denoised_over_sigma = (atom_coords_noisy - atom_coords_denoised) / t_hat
-            atom_coords_next = (
-                atom_coords_noisy
-                + self.step_scale * (sigma_t - t_hat) * denoised_over_sigma
-            )
+            if alg_name == "mid_point_ode":
+                denoised_over_sigma = (atom_coords_noisy - atom_coords_denoised) / t_hat
+                atom_coords_next = (
+                    atom_coords_noisy
+                    + self.step_scale * (sigma_t - t_hat) * denoised_over_sigma
+                )
+            elif "stomax" in alg_name or "markov" in alg_name:
+                if "stomax" in alg_name:
+                    gamma_alg = 0.0
+                else:
+                    gamma_alg = (sigma_t**2) / sigma_tm
+
+                ratio = gamma_alg / sigma_tm
+
+                temperature_time = steering_t
+                if temperature_type == "exponential":
+                    temperature_term = temperature_time**temp_index
+                elif temperature_type == "constant":
+                    temperature_term = temp_index
+                else:
+                    raise ValueError(
+                        f"Unknown temperature_type: {temperature_type} (expected exponential|constant)"
+                    )
+
+                dt = sigma_t - gamma_alg
+                if dt < 0:
+                    dt = 0.0
+
+                if "-1" in alg_name:
+                    stochastic_sigma = sqrt(2 * sigma_tm * dt)
+                elif "-2" in alg_name:
+                    stochastic_sigma = sqrt(2 * sigma_t * dt)
+                else:
+                    scale = sqrt(self.sigma_data**2 + sigma_t**2) / sqrt(
+                        self.sigma_data**2 + sigma_tm**2
+                    )
+                    stochastic_sigma = sqrt(scale * 2 * sigma_tm * dt)
+
+                stochastic_term = (
+                    temperature_term
+                    * stochastic_sigma
+                    * torch.randn_like(atom_coords_noisy)
+                )
+
+                atom_coords_next = (
+                    (1 - ratio) * atom_coords_denoised
+                    + ratio * atom_coords_noisy
+                    + stochastic_term
+                )
+            else:
+                raise ValueError(f"Unknown sampling algorithm: {alg_name}")
 
             atom_coords = atom_coords_next
 

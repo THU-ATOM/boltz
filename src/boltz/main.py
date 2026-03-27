@@ -887,6 +887,32 @@ def cli() -> None:
     default=None,
 )
 @click.option(
+    "--diffusion_algorithm",
+    type=str,
+    help=(
+        "Diffusion sampler algorithm. "
+        "Supported by this build: mid_point_ode, stomax, stomax-1, stomax-2, "
+        "markov, markov-1, markov-2. Default is mid_point_ode."
+    ),
+    default="mid_point_ode",
+)
+@click.option(
+    "--diffusion_temp_index",
+    type=float,
+    help=(
+        "Temperature parameter for stomax/markov samplers. "
+        "For temperature_type=exponential, actual factor is time**temp_index; "
+        "for constant, it is temp_index. Default is 0.0."
+    ),
+    default=0.0,
+)
+@click.option(
+    "--diffusion_temperature_type",
+    type=click.Choice(["exponential", "constant"]),
+    help="Temperature schedule type for stomax/markov samplers. Default is exponential.",
+    default="exponential",
+)
+@click.option(
     "--write_full_pae",
     type=bool,
     is_flag=True,
@@ -1054,6 +1080,9 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     diffusion_samples_affinity: int = 3,
     max_parallel_samples: Optional[int] = None,
     step_scale: Optional[float] = None,
+    diffusion_algorithm: str = "mid_point_ode",
+    diffusion_temp_index: float = 0.0,
+    diffusion_temperature_type: Literal["exponential", "constant"] = "exponential",
     write_full_pae: bool = False,
     write_full_pde: bool = False,
     output_format: Literal["pdb", "mmcif"] = "mmcif",
@@ -1296,11 +1325,18 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             else:
                 checkpoint = cache / "boltz1_conf.ckpt"
 
+        algorithm = {
+            "name": diffusion_algorithm,
+            "temp_index": diffusion_temp_index,
+            "temperature_type": diffusion_temperature_type,
+        }
+
         predict_args = {
             "recycling_steps": recycling_steps,
             "sampling_steps": sampling_steps,
             "diffusion_samples": diffusion_samples,
             "max_parallel_samples": max_parallel_samples,
+            "algorithm": algorithm,
             "write_confidence_summary": True,
             "write_full_pae": write_full_pae,
             "write_full_pde": write_full_pde,
@@ -1369,11 +1405,18 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             affinity=True,
         )
 
+        algorithm = {
+            "name": diffusion_algorithm,
+            "temp_index": diffusion_temp_index,
+            "temperature_type": diffusion_temperature_type,
+        }
+
         predict_affinity_args = {
             "recycling_steps": 5,
             "sampling_steps": sampling_steps_affinity,
             "diffusion_samples": diffusion_samples_affinity,
             "max_parallel_samples": 1,
+            "algorithm": algorithm,
             "write_confidence_summary": False,
             "write_full_pae": False,
             "write_full_pde": False,

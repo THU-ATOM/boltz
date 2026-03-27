@@ -407,6 +407,7 @@ class Boltz2(LightningModule):
         diffusion_samples: int = 1,
         max_parallel_samples: Optional[int] = None,
         run_confidence_sequentially: bool = False,
+        algorithm: Optional[dict[str, Any]] = None,
     ) -> dict[str, Tensor]:
         with torch.set_grad_enabled(
             self.training and self.structure_prediction_training
@@ -539,6 +540,7 @@ class Boltz2(LightningModule):
                         multiplicity=diffusion_samples,
                         max_parallel_samples=max_parallel_samples,
                         steering_args=self.steering_args,
+                        algorithm=algorithm,
                         diffusion_conditioning=diffusion_conditioning,
                     )
                     dict_out.update(struct_out)
@@ -1063,6 +1065,7 @@ class Boltz2(LightningModule):
                 diffusion_samples=self.predict_args["diffusion_samples"],
                 max_parallel_samples=self.predict_args["max_parallel_samples"],
                 run_confidence_sequentially=True,
+                algorithm=self.predict_args.get("algorithm"),
             )
             pred_dict = {"exception": False}
             if "keys_dict_batch" in self.predict_args:
